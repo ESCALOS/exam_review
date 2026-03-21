@@ -15,6 +15,8 @@ const editingClassroomId = ref('')
 const editingStudentId = ref('')
 const studentEditName = ref('')
 const collapsedClassrooms = ref<Record<string, boolean>>({})
+const pasteTexts = ref<Record<string, string>>({})
+const showPasteArea = ref<Record<string, boolean>>({})
 const promotion = ref({
   fromClassroomId: '',
   targetYear: new Date().getFullYear() + 1,
@@ -147,6 +149,32 @@ function removeStudent(enrollmentId: string): void {
   }
 
   store.removeEnrollment(enrollmentId)
+}
+
+function parsePasteText(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.split('\t')[0].trim())
+    .filter((name) => name.length > 0)
+}
+
+function togglePasteArea(classroomId: string): void {
+  showPasteArea.value[classroomId] = !showPasteArea.value[classroomId]
+  if (!showPasteArea.value[classroomId]) {
+    pasteTexts.value[classroomId] = ''
+  }
+}
+
+function addPastedStudents(classroomId: string): void {
+  const names = parsePasteText(pasteTexts.value[classroomId] ?? '')
+  if (names.length === 0) {
+    return
+  }
+  for (const name of names) {
+    store.addStudentToClassroom(classroomId, name)
+  }
+  pasteTexts.value[classroomId] = ''
+  showPasteArea.value[classroomId] = false
 }
 
 function runPromotion(): void {
@@ -302,7 +330,41 @@ function clearPromotionStudents(): void {
           <button type="submit" class="icon-btn icon-only" title="Agregar alumno" aria-label="Agregar alumno">
             <span class="btn-icon" aria-hidden="true">＋</span>
           </button>
+          <button
+            type="button"
+            class="small icon-btn"
+            :title="showPasteArea[classroom.id] ? 'Cerrar pegado' : 'Pegar lista desde Excel'"
+            @click="togglePasteArea(classroom.id)"
+          >
+            <span class="btn-icon" aria-hidden="true">📋</span>
+            <span class="btn-text">{{ showPasteArea[classroom.id] ? 'Cerrar' : 'Pegar lista' }}</span>
+          </button>
         </form>
+
+        <div v-if="showPasteArea[classroom.id]" class="paste-area-box">
+          <p class="muted paste-hint">
+            Copia una columna de nombres desde Excel (sin cabecera) y pégala aquí.
+            <template v-if="parsePasteText(pasteTexts[classroom.id] ?? '').length">
+              — <strong>{{ parsePasteText(pasteTexts[classroom.id] ?? '').length }} nombre(s) detectado(s)</strong>
+            </template>
+          </p>
+          <textarea
+            v-model="pasteTexts[classroom.id]"
+            class="paste-textarea"
+            rows="6"
+            placeholder="Pega aquí los nombres..."
+          />
+          <div class="actions">
+            <button
+              type="button"
+              :disabled="!parsePasteText(pasteTexts[classroom.id] ?? '').length"
+              @click="addPastedStudents(classroom.id)"
+            >
+              Agregar todos
+            </button>
+            <button type="button" class="small" @click="togglePasteArea(classroom.id)">Cancelar</button>
+          </div>
+        </div>
 
         <ul class="clean-list students-grid">
           <li
