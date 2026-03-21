@@ -9,8 +9,17 @@ const store = useAppStore()
 const examForm = ref({
   title: '',
   classroomId: '',
+  prevInicioMax: 8,
+  inicioMax: 12,
+  procesoMax: 16,
 })
 const editingExamId = ref('')
+const multipleChoiceOptions = ['A', 'B', 'C', 'D', 'E'] as const
+
+function normalizeChoice(value: string | undefined): string {
+  const normalized = (value ?? '').trim().toUpperCase()
+  return multipleChoiceOptions.includes(normalized as (typeof multipleChoiceOptions)[number]) ? normalized : ''
+}
 
 const questions = ref<ExamQuestion[]>([
   {
@@ -51,16 +60,16 @@ function updateType(question: ExamQuestion, type: QuestionType): void {
 
 function submitExam(): void {
   const cleanedQuestions = questions.value
-    .map((question) => ({
+    .map((question, index) => ({
       ...question,
-      prompt: question.prompt.trim(),
+      prompt: `Pregunta ${index + 1}`,
       points: Number(question.points),
-      correctAnswer: question.type === 'mcq' ? (question.correctAnswer ?? '').trim() : undefined,
+      correctAnswer: question.type === 'mcq' ? normalizeChoice(question.correctAnswer) : undefined,
       options: undefined,
       correctOptionIndex: undefined,
     }))
     .filter((question) => {
-      if (!question.prompt || question.points <= 0) {
+      if (question.points <= 0) {
         return false
       }
 
@@ -75,17 +84,33 @@ function submitExam(): void {
     return
   }
 
+  const scaleConfig = {
+    prevInicioMax: Math.round(Number(examForm.value.prevInicioMax)),
+    inicioMax: Math.round(Number(examForm.value.inicioMax)),
+    procesoMax: Math.round(Number(examForm.value.procesoMax)),
+  }
+
+  examForm.value.prevInicioMax = scaleConfig.prevInicioMax
+  examForm.value.inicioMax = scaleConfig.inicioMax
+  examForm.value.procesoMax = scaleConfig.procesoMax
+
+  if (!(scaleConfig.prevInicioMax < scaleConfig.inicioMax && scaleConfig.inicioMax < scaleConfig.procesoMax)) {
+    return
+  }
+
   if (editingExamId.value) {
     store.updateExam(editingExamId.value, {
       title: examForm.value.title,
       classroomId: examForm.value.classroomId,
       questions: cleanedQuestions,
+      scaleConfig,
     })
   } else {
     const exam = store.createExam({
       title: examForm.value.title,
       classroomId: examForm.value.classroomId,
       questions: cleanedQuestions,
+      scaleConfig,
     })
 
     if (!exam) {
@@ -106,12 +131,16 @@ function startEditExam(examId: string): void {
   editingExamId.value = exam.id
   examForm.value.title = exam.title
   examForm.value.classroomId = exam.classroomId
+  const scaleConfig = store.getExamScaleConfig(exam)
+  examForm.value.prevInicioMax = scaleConfig.prevInicioMax
+  examForm.value.inicioMax = scaleConfig.inicioMax
+  examForm.value.procesoMax = scaleConfig.procesoMax
   questions.value = exam.questions.map((question) => ({
     id: question.id,
     prompt: question.prompt,
     type: question.type,
     points: question.points,
-    correctAnswer: question.correctAnswer ?? '',
+    correctAnswer: normalizeChoice(question.correctAnswer),
   }))
 }
 
@@ -127,10 +156,32 @@ function deleteExam(examId: string): void {
   }
 }
 
+function exportExamExcel(examId: string): void {
+  const result = store.exportExamExcel(examId)
+
+  if (!result.ok || !result.content || !result.filename) {
+    window.alert(result.message)
+    return
+  }
+
+  const blob = new Blob([result.content], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = result.filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 function resetForm(): void {
   editingExamId.value = ''
   examForm.value.title = ''
   examForm.value.classroomId = ''
+  examForm.value.prevInicioMax = 8
+  examForm.value.inicioMax = 12
+  examForm.value.procesoMax = 16
 
   questions.value = [
     {
@@ -168,17 +219,31 @@ function resetForm(): void {
 
         <p class="muted">Puntaje total del examen: {{ totalPoints }}</p>
 
+        <div class="grid-form full-width">
+          <label>
+            Prev. inicio (menor que)
+            <input v-model.number="examForm.prevInicioMax" type="number" min="0" step="1" required />
+          </label>
+          <label>
+            Inicio (menor que)
+            <input v-model.number="examForm.inicioMax" type="number" min="0" step="1" required />
+          </label>
+          <label>
+            Proceso (menor que)
+            <input v-model.number="examForm.procesoMax" type="number" min="0" step="1" required />
+          </label>
+        </div>
+        <p class="muted">
+          Escala: Prev. inicio &lt; {{ examForm.prevInicioMax }} · Inicio &lt; {{ examForm.inicioMax }} ·
+          Proceso &lt; {{ examForm.procesoMax }} · Satisfactorio ≥ {{ examForm.procesoMax }}
+        </p>
+
         <div class="stack full-width">
           <article v-for="(question, index) in questions" :key="question.id" class="sub-card">
             <header class="row-between">
               <strong>Pregunta {{ index + 1 }}</strong>
               <button type="button" class="small" @click="removeQuestion(question.id)">Eliminar</button>
             </header>
-
-            <label>
-              Enunciado
-              <input v-model="question.prompt" type="text" required />
-            </label>
 
             <div class="grid-form">
               <label>
@@ -196,7 +261,18 @@ function resetForm(): void {
 
             <label v-if="question.type === 'mcq'">
               Alternativa correcta
-              <input v-model="question.correctAnswer" type="text" placeholder="Ejemplo: B" required />
+              <div class="choice-group">
+                <label v-for="option in multipleChoiceOptions" :key="`${question.id}-${option}`" class="choice-pill">
+                  <input
+                    v-model="question.correctAnswer"
+                    type="radio"
+                    :name="`correct-${question.id}`"
+                    :value="option"
+                    required
+                  />
+                  <span>{{ option }}</span>
+                </label>
+              </div>
             </label>
           </article>
         </div>
@@ -219,6 +295,10 @@ function resetForm(): void {
           </span>
           <div class="actions">
             <small>{{ exam.year }}</small>
+            <button type="button" class="small icon-btn" @click="exportExamExcel(exam.id)">
+              <span class="btn-icon" aria-hidden="true">⇩</span>
+              <span class="btn-text">Excel</span>
+            </button>
             <button type="button" class="small icon-btn" @click="startEditExam(exam.id)">
               <span class="btn-icon" aria-hidden="true">✎</span>
               <span class="btn-text">Editar</span>

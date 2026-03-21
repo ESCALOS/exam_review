@@ -47,6 +47,13 @@ export interface Exam {
     year: number
     createdAt: string
     questions: ExamQuestion[]
+    scaleConfig?: ExamScaleConfig
+}
+
+export interface ExamScaleConfig {
+    prevInicioMax: number
+    inicioMax: number
+    procesoMax: number
 }
 
 export interface StudentAnswer {

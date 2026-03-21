@@ -1,5 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
+import * as XLSX from 'xlsx'
 import type {
     AppData,
     Classroom,
@@ -7,13 +8,21 @@ import type {
     EnrollmentStatus,
     Exam,
     ExamQuestion,
+    ExamScaleConfig,
     ExamResult,
     PromotionRecord,
     Student,
     StudentAnswer,
 } from '../types/models'
 import { createId } from '../utils/ids'
-import { calculateRawScore, getExamMaxRawScore, getPassFail, normalizeScore } from '../utils/grading'
+import {
+    calculateRawScore,
+    getDefaultScaleConfig,
+    getExamMaxRawScore,
+    getPassFail,
+    getScaleLabel,
+    normalizeScore,
+} from '../utils/grading'
 import { getDefaultData, loadFromStorage, replaceStorage, saveToStorage } from '../utils/storage'
 
 function now(): string {
@@ -184,7 +193,12 @@ export const useAppStore = defineStore('app', () => {
             .sort((a, b) => a.student.fullName.localeCompare(b.student.fullName))
     }
 
-    function createExam(input: { title: string; classroomId: string; questions: ExamQuestion[] }): Exam | null {
+    function createExam(input: {
+        title: string
+        classroomId: string
+        questions: ExamQuestion[]
+        scaleConfig?: ExamScaleConfig
+    }): Exam | null {
         const classroom = data.value.classrooms.find((item) => item.id === input.classroomId)
 
         if (!classroom || !input.title.trim() || input.questions.length === 0) {
@@ -198,13 +212,19 @@ export const useAppStore = defineStore('app', () => {
             year: classroom.year,
             createdAt: now(),
             questions: input.questions,
+            scaleConfig: input.scaleConfig,
         }
 
         data.value.exams.push(exam)
         return exam
     }
 
-    function updateExam(examId: string, input: { title: string; classroomId: string; questions: ExamQuestion[] }): void {
+    function updateExam(examId: string, input: {
+        title: string
+        classroomId: string
+        questions: ExamQuestion[]
+        scaleConfig?: ExamScaleConfig
+    }): void {
         const exam = data.value.exams.find((item) => item.id === examId)
         const classroom = data.value.classrooms.find((item) => item.id === input.classroomId)
 
@@ -216,6 +236,7 @@ export const useAppStore = defineStore('app', () => {
         exam.classroomId = input.classroomId
         exam.year = classroom.year
         exam.questions = input.questions
+        exam.scaleConfig = input.scaleConfig
 
         for (const result of data.value.results.filter((item) => item.examId === exam.id)) {
             const maxRawScore = getExamMaxRawScore(exam)
@@ -234,6 +255,29 @@ export const useAppStore = defineStore('app', () => {
 
     function getExamById(examId: string): Exam | undefined {
         return data.value.exams.find((exam) => exam.id === examId)
+    }
+
+    function getExamScaleConfig(exam: Exam): ExamScaleConfig {
+        const maxRawScore = getExamMaxRawScore(exam)
+        const fallback = getDefaultScaleConfig(maxRawScore)
+
+        if (!exam.scaleConfig) {
+            return fallback
+        }
+
+        const prevInicioMax = Math.round(Number(exam.scaleConfig.prevInicioMax))
+        const inicioMax = Math.round(Number(exam.scaleConfig.inicioMax))
+        const procesoMax = Math.round(Number(exam.scaleConfig.procesoMax))
+
+        if (!(prevInicioMax < inicioMax && inicioMax < procesoMax)) {
+            return fallback
+        }
+
+        return {
+            prevInicioMax,
+            inicioMax,
+            procesoMax,
+        }
     }
 
     function getResult(examId: string, studentId: string): ExamResult | undefined {
@@ -433,6 +477,124 @@ export const useAppStore = defineStore('app', () => {
         return header + rows.join('\n')
     }
 
+    function exportExamExcel(examId: string): {
+        ok: boolean
+        message: string
+        filename?: string
+        content?: ArrayBuffer
+    } {
+        const exam = getExamById(examId)
+
+        if (!exam) {
+            return { ok: false, message: 'No se encontró el examen.' }
+        }
+
+        const classroom = data.value.classrooms.find((item) => item.id === exam.classroomId)
+
+        if (!classroom) {
+            return { ok: false, message: 'No se encontró el aula del examen.' }
+        }
+
+        const scaleConfig = getExamScaleConfig(exam)
+        const classroomStudents = getClassroomStudents(classroom.id)
+        const questionHeaders = exam.questions.map((_, index) => `P${index + 1}`)
+        const headers = [
+            'N°',
+            'APELLIDOS Y NOMBRES',
+            ...questionHeaders,
+            'TOTAL',
+            'SATISFACTORIO',
+            'PROCESO',
+            'INICIO',
+            'PREV. INICIO',
+        ]
+
+        const rows = classroomStudents.map((item, index) => {
+            const result = getResult(exam.id, item.student.id)
+            const answers = exam.questions.map((question) => {
+                const answer = result?.answers.find((entry) => entry.questionId === question.id)
+
+                if (!answer) {
+                    return ''
+                }
+
+                if (question.type === 'mcq') {
+                    return (answer.selectedText ?? '').toUpperCase()
+                }
+
+                return Number(answer.freeScore ?? 0)
+            })
+
+            const correctCount = exam.questions.reduce((sum, question) => {
+                const answer = result?.answers.find((entry) => entry.questionId === question.id)
+
+                if (!answer) {
+                    return sum
+                }
+
+                if (question.type === 'mcq') {
+                    const expected = (question.correctAnswer ?? '').trim().toUpperCase()
+                    const actual = (answer.selectedText ?? '').trim().toUpperCase()
+                    return sum + (expected && expected === actual ? 1 : 0)
+                }
+
+                return sum + (Number(answer.freeScore ?? 0) >= question.points ? 1 : 0)
+            }, 0)
+
+            const rawScore = result?.rawScore ?? 0
+            const scale = getScaleLabel(rawScore, scaleConfig)
+
+            return [
+                index + 1,
+                item.student.fullName,
+                ...answers,
+                correctCount,
+                scale === 'SATISFACTORIO' ? '✓' : '',
+                scale === 'PROCESO' ? '✓' : '',
+                scale === 'INICIO' ? '✓' : '',
+                scale === 'PREV. INICIO' ? '✓' : '',
+            ]
+        })
+
+        const scaleLegendRow = [
+            '',
+            'ESCALA',
+            ...new Array(questionHeaders.length).fill(''),
+            '',
+            `>= ${scaleConfig.procesoMax}`,
+            `>= ${scaleConfig.inicioMax} y < ${scaleConfig.procesoMax}`,
+            `>= ${scaleConfig.prevInicioMax} y < ${scaleConfig.inicioMax}`,
+            `< ${scaleConfig.prevInicioMax}`,
+        ]
+
+        const sheetData = [headers, ...rows, [], scaleLegendRow]
+        const worksheet = XLSX.utils.aoa_to_sheet(sheetData)
+        worksheet['!cols'] = [
+            { wch: 5 },
+            { wch: 38 },
+            ...questionHeaders.map(() => ({ wch: 6 })),
+            { wch: 8 },
+            { wch: 16 },
+            { wch: 14 },
+            { wch: 12 },
+            { wch: 14 },
+        ]
+
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados')
+
+        const content = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+        const safeExamTitle = exam.title.replace(/[\\/:*?"<>|]/g, '_')
+        const filename = `${safeExamTitle}-${classroom.name}.xlsx`.replace(/\s+/g, '_')
+
+        return {
+            ok: true,
+            message: 'Excel generado correctamente.',
+            filename,
+            content,
+        }
+    }
+
     function resetAll(): void {
         data.value = getDefaultData()
         replaceStorage(data.value)
@@ -457,6 +619,7 @@ export const useAppStore = defineStore('app', () => {
         updateExam,
         deleteExam,
         getExamById,
+        getExamScaleConfig,
         getResult,
         saveResult,
         getExamProgress,
@@ -464,6 +627,7 @@ export const useAppStore = defineStore('app', () => {
         exportJson,
         importJson,
         exportGradesCsv,
+        exportExamExcel,
         resetAll,
     }
 })

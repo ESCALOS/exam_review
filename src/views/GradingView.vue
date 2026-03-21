@@ -10,6 +10,12 @@ const selectedExamId = ref('')
 const currentIndex = ref(0)
 const answers = reactive<Record<string, StudentAnswer>>({})
 const savedMessage = ref('')
+const multipleChoiceOptions = ['A', 'B', 'C', 'D', 'E'] as const
+
+function normalizeChoice(value: string | undefined): string {
+  const normalized = (value ?? '').trim().toUpperCase()
+  return multipleChoiceOptions.includes(normalized as (typeof multipleChoiceOptions)[number]) ? normalized : ''
+}
 
 const selectedExam = computed(() => store.getExamById(selectedExamId.value))
 const classroomStudents = computed(() => {
@@ -94,7 +100,7 @@ function loadCurrentStudentAnswers(): void {
   for (const answer of existingResult.answers) {
     answers[answer.questionId] = {
       questionId: answer.questionId,
-      selectedText: answer.selectedText ?? '',
+      selectedText: normalizeChoice(answer.selectedText),
       selectedOptionIndex: answer.selectedOptionIndex,
       freeScore: answer.freeScore ?? 0,
     }
@@ -126,7 +132,7 @@ function saveCurrent(): void {
     if (question.type === 'mcq') {
       return {
         questionId: question.id,
-        selectedText: (answer?.selectedText ?? '').trim(),
+        selectedText: normalizeChoice(answer?.selectedText),
         selectedOptionIndex: answer?.selectedOptionIndex,
       }
     }
@@ -203,17 +209,35 @@ function nextStudent(): void {
 
         <div class="stack">
           <article v-for="(question, index) in selectedExam.questions" :key="question.id" class="sub-card">
-            <p><strong>{{ index + 1 }}.</strong> {{ question.prompt }}</p>
+            <p><strong>Pregunta {{ index + 1 }}</strong></p>
             <p class="muted">Puntaje: {{ question.points }}</p>
 
             <div v-if="question.type === 'mcq'" class="stack">
               <label>
                 Respuesta marcada por el alumno
-                <input
-                  v-model="answers[question.id].selectedText"
-                  type="text"
-                  placeholder="Ejemplo: B"
-                />
+                <div class="choice-group">
+                  <label
+                    v-for="option in multipleChoiceOptions"
+                    :key="`student-${currentStudent.student.id}-${question.id}-${option}`"
+                    class="choice-pill"
+                  >
+                    <input
+                      v-model="answers[question.id].selectedText"
+                      type="radio"
+                      :name="`answer-${currentStudent.student.id}-${question.id}`"
+                      :value="option"
+                    />
+                    <span>{{ option }}</span>
+                  </label>
+
+                  <button
+                    type="button"
+                    class="small"
+                    @click="answers[question.id].selectedText = ''"
+                  >
+                    Limpiar
+                  </button>
+                </div>
               </label>
               <p class="muted">Correcta: {{ question.correctAnswer }}</p>
             </div>

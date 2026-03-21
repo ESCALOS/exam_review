@@ -5,6 +5,7 @@ import { useAppStore } from '../stores/app'
 const store = useAppStore()
 const message = ref('')
 const importMode = ref<'replace' | 'merge'>('merge')
+const selectedExamId = ref('')
 
 function download(filename: string, content: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType })
@@ -24,6 +25,32 @@ function exportJson(): void {
 function exportCsv(): void {
   download('exam-review-grades.csv', store.exportGradesCsv(), 'text/csv;charset=utf-8;')
   message.value = 'Reporte CSV exportado.'
+}
+
+function exportExcelByExam(): void {
+  if (!selectedExamId.value) {
+    message.value = 'Selecciona un examen para exportar Excel.'
+    return
+  }
+
+  const result = store.exportExamExcel(selectedExamId.value)
+
+  if (!result.ok || !result.content || !result.filename) {
+    message.value = result.message
+    return
+  }
+
+  const blob = new Blob([result.content], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = result.filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+
+  message.value = 'Excel exportado correctamente.'
 }
 
 function onImportFile(event: Event): void {
@@ -62,6 +89,18 @@ function resetApp(): void {
       <div class="actions">
         <button type="button" @click="exportJson">Exportar JSON</button>
         <button type="button" @click="exportCsv">Exportar CSV</button>
+      </div>
+      <div class="stack">
+        <label>
+          Examen para Excel
+          <select v-model="selectedExamId">
+            <option value="">Seleccionar</option>
+            <option v-for="exam in store.exams" :key="exam.id" :value="exam.id">
+              {{ exam.title }} - {{ exam.year }}
+            </option>
+          </select>
+        </label>
+        <button type="button" @click="exportExcelByExam">Exportar Excel</button>
       </div>
     </article>
 
