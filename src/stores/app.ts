@@ -505,6 +505,12 @@ export const useAppStore = defineStore('app', () => {
             'INICIO',
         ]
 
+        const scaleCounts = {
+            LOGRADO: 0,
+            PROCESO: 0,
+            INICIO: 0,
+        }
+
         const rows = classroomStudents.map((item, index) => {
             const result = getResult(exam.id, item.student.id)
             const answers = exam.questions.map((question) => {
@@ -539,6 +545,7 @@ export const useAppStore = defineStore('app', () => {
 
             const rawScore = result?.rawScore ?? 0
             const scale = getScaleLabel(rawScore, scaleConfig)
+            scaleCounts[scale] += 1
 
             return [
                 index + 1,
@@ -561,7 +568,17 @@ export const useAppStore = defineStore('app', () => {
             `< ${scaleConfig.inicioMax}`,
         ]
 
-        const sheetData = [headers, ...rows, [], scaleLegendRow]
+        const scaleCountRow = [
+            '',
+            'CANTIDAD',
+            ...new Array(questionHeaders.length).fill(''),
+            '',
+            scaleCounts.LOGRADO,
+            scaleCounts.PROCESO,
+            scaleCounts.INICIO,
+        ]
+
+        const sheetData = [headers, ...rows, scaleCountRow, scaleLegendRow]
         const worksheet = XLSX.utils.aoa_to_sheet(sheetData)
         worksheet['!cols'] = [
             { wch: 5 },
@@ -596,6 +613,28 @@ export const useAppStore = defineStore('app', () => {
                 fill: { patternType: 'solid', fgColor: { rgb: colors.bg }, bgColor: { indexed: 64 } },
                 font: { bold: true, color: { rgb: colors.fg } },
                 alignment: { horizontal: 'center', vertical: 'center' },
+            }
+        }
+
+        const borderStyle = {
+            top: { style: 'thin', color: { rgb: 'B0B7C3' } },
+            bottom: { style: 'thin', color: { rgb: 'B0B7C3' } },
+            left: { style: 'thin', color: { rgb: 'B0B7C3' } },
+            right: { style: 'thin', color: { rgb: 'B0B7C3' } },
+        }
+
+        const totalRows = sheetData.length
+        for (let row = 0; row < totalRows; row++) {
+            for (let col = 0; col < headers.length; col++) {
+                const cellAddr = XLSX.utils.encode_cell({ r: row, c: col })
+                const existingCell = worksheet[cellAddr] ?? { t: 's', v: '' }
+
+                existingCell.s = {
+                    ...(existingCell.s ?? {}),
+                    border: borderStyle,
+                }
+
+                worksheet[cellAddr] = existingCell
             }
         }
 
