@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
-import * as XLSX from 'xlsx'
+import * as XLSX from 'xlsx-js-style'
 import type {
     AppData,
     Classroom,
@@ -19,7 +19,6 @@ import {
     calculateRawScore,
     getDefaultScaleConfig,
     getExamMaxRawScore,
-    getPassFail,
     getScaleLabel,
     normalizeScore,
 } from '../utils/grading'
@@ -265,19 +264,14 @@ export const useAppStore = defineStore('app', () => {
             return fallback
         }
 
-        const prevInicioMax = Math.round(Number(exam.scaleConfig.prevInicioMax))
         const inicioMax = Math.round(Number(exam.scaleConfig.inicioMax))
         const procesoMax = Math.round(Number(exam.scaleConfig.procesoMax))
 
-        if (!(prevInicioMax < inicioMax && inicioMax < procesoMax)) {
+        if (!(inicioMax < procesoMax)) {
             return fallback
         }
 
-        return {
-            prevInicioMax,
-            inicioMax,
-            procesoMax,
-        }
+        return { inicioMax, procesoMax }
     }
 
     function getResult(examId: string, studentId: string): ExamResult | undefined {
@@ -459,7 +453,10 @@ export const useAppStore = defineStore('app', () => {
             const exam = data.value.exams.find((item) => item.id === result.examId)
             const student = data.value.students.find((item) => item.id === result.studentId)
 
-            const state = getPassFail(result.rawScore, result.maxRawScore)
+            const examForScale = data.value.exams.find((item) => item.id === result.examId)
+            const state = examForScale
+                ? getScaleLabel(result.rawScore, getExamScaleConfig(examForScale))
+                : getScaleLabel(result.rawScore, getDefaultScaleConfig(result.maxRawScore))
 
             const values = [
                 classroom?.name ?? '',
@@ -503,10 +500,9 @@ export const useAppStore = defineStore('app', () => {
             'APELLIDOS Y NOMBRES',
             ...questionHeaders,
             'TOTAL',
-            'SATISFACTORIO',
+            'LOGRADO',
             'PROCESO',
             'INICIO',
-            'PREV. INICIO',
         ]
 
         const rows = classroomStudents.map((item, index) => {
@@ -549,10 +545,9 @@ export const useAppStore = defineStore('app', () => {
                 item.student.fullName,
                 ...answers,
                 correctCount,
-                scale === 'SATISFACTORIO' ? '✓' : '',
+                scale === 'LOGRADO' ? '✓' : '',
                 scale === 'PROCESO' ? '✓' : '',
                 scale === 'INICIO' ? '✓' : '',
-                scale === 'PREV. INICIO' ? '✓' : '',
             ]
         })
 
@@ -563,8 +558,7 @@ export const useAppStore = defineStore('app', () => {
             '',
             `>= ${scaleConfig.procesoMax}`,
             `>= ${scaleConfig.inicioMax} y < ${scaleConfig.procesoMax}`,
-            `>= ${scaleConfig.prevInicioMax} y < ${scaleConfig.inicioMax}`,
-            `< ${scaleConfig.prevInicioMax}`,
+            `< ${scaleConfig.inicioMax}`,
         ]
 
         const sheetData = [headers, ...rows, [], scaleLegendRow]
@@ -577,13 +571,38 @@ export const useAppStore = defineStore('app', () => {
             { wch: 16 },
             { wch: 14 },
             { wch: 12 },
-            { wch: 14 },
         ]
+
+        // Colores de cabecera
+        const nQ = questionHeaders.length
+        const headerColorMap: Record<number, { bg: string; fg: string }> = {
+            0: { bg: '115E59', fg: 'FFFFFF' }, // N°         → teal
+            1: { bg: '115E59', fg: 'FFFFFF' }, // APELLIDOS  → teal
+            [2 + nQ]: { bg: '374151', fg: 'FFFFFF' }, // TOTAL      → gris
+            [2 + nQ + 1]: { bg: '1A9850', fg: 'FFFFFF' }, // LOGRADO    → verde
+            [2 + nQ + 2]: { bg: 'FFFF00', fg: '1B2430' }, // PROCESO    → amarillo
+            [2 + nQ + 3]: { bg: 'B42318', fg: 'FFFFFF' }, // INICIO     → rojo
+        }
+
+        for (let col = 0; col < headers.length; col++) {
+            const cellAddr = XLSX.utils.encode_cell({ r: 0, c: col })
+            const cell = worksheet[cellAddr]
+
+            if (!cell) continue
+
+            const colors = headerColorMap[col] ?? { bg: '1D4ED8', fg: 'FFFFFF' } // preguntas → azul
+
+            cell.s = {
+                fill: { patternType: 'solid', fgColor: { rgb: colors.bg }, bgColor: { indexed: 64 } },
+                font: { bold: true, color: { rgb: colors.fg } },
+                alignment: { horizontal: 'center', vertical: 'center' },
+            }
+        }
 
         const workbook = XLSX.utils.book_new()
         XLSX.utils.book_append_sheet(workbook, worksheet, 'Resultados')
 
-        const content = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' }) as ArrayBuffer
+        const content = XLSX.write(workbook, { type: 'array', bookType: 'xlsx', cellStyles: true }) as ArrayBuffer
         const safeExamTitle = exam.title.replace(/[\\/:*?"<>|]/g, '_')
         const filename = `${safeExamTitle}-${classroom.name}.xlsx`.replace(/\s+/g, '_')
 

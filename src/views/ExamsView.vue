@@ -11,7 +11,6 @@ const DEFAULT_QUESTION_COUNT = 20
 const examForm = ref({
   title: '',
   classroomId: '',
-  prevInicioMax: 8,
   inicioMax: 12,
   procesoMax: 16,
 })
@@ -141,16 +140,14 @@ function submitExam(): void {
   }
 
   const scaleConfig = {
-    prevInicioMax: Math.round(Number(examForm.value.prevInicioMax)),
     inicioMax: Math.round(Number(examForm.value.inicioMax)),
     procesoMax: Math.round(Number(examForm.value.procesoMax)),
   }
 
-  examForm.value.prevInicioMax = scaleConfig.prevInicioMax
   examForm.value.inicioMax = scaleConfig.inicioMax
   examForm.value.procesoMax = scaleConfig.procesoMax
 
-  if (!(scaleConfig.prevInicioMax < scaleConfig.inicioMax && scaleConfig.inicioMax < scaleConfig.procesoMax)) {
+  if (!(scaleConfig.inicioMax < scaleConfig.procesoMax)) {
     return
   }
 
@@ -188,7 +185,6 @@ function startEditExam(examId: string): void {
   examForm.value.title = exam.title
   examForm.value.classroomId = exam.classroomId
   const scaleConfig = store.getExamScaleConfig(exam)
-  examForm.value.prevInicioMax = scaleConfig.prevInicioMax
   examForm.value.inicioMax = scaleConfig.inicioMax
   examForm.value.procesoMax = scaleConfig.procesoMax
   questions.value = exam.questions.map((question) => ({
@@ -237,7 +233,6 @@ function resetForm(): void {
   currentQuestionIndex.value = 0
   examForm.value.title = ''
   examForm.value.classroomId = ''
-  examForm.value.prevInicioMax = 8
   examForm.value.inicioMax = 12
   examForm.value.procesoMax = 16
 
@@ -271,10 +266,6 @@ function resetForm(): void {
 
         <div class="grid-form full-width">
           <label>
-            Prev. inicio (menor que)
-            <input v-model.number="examForm.prevInicioMax" type="number" min="0" step="1" required />
-          </label>
-          <label>
             Inicio (menor que)
             <input v-model.number="examForm.inicioMax" type="number" min="0" step="1" required />
           </label>
@@ -284,8 +275,9 @@ function resetForm(): void {
           </label>
         </div>
         <p class="muted">
-          Escala: Prev. inicio &lt; {{ examForm.prevInicioMax }} · Inicio &lt; {{ examForm.inicioMax }} ·
-          Proceso &lt; {{ examForm.procesoMax }} · Satisfactorio ≥ {{ examForm.procesoMax }}
+          Escala: Inicio &lt; {{ examForm.inicioMax }} ·
+          Proceso {{ examForm.inicioMax }}–{{ examForm.procesoMax - 1 }} ·
+          Logrado ≥ {{ examForm.procesoMax }}
         </p>
 
         <div class="stack full-width">

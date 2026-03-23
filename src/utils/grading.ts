@@ -52,17 +52,12 @@ export function getDefaultScaleConfig(maxRawScore: number): ExamScaleConfig {
     const safeMax = Math.max(1, Math.round(maxRawScore))
 
     return {
-        prevInicioMax: Math.round(safeMax * 0.4),
         inicioMax: Math.round(safeMax * 0.6),
         procesoMax: Math.round(safeMax * 0.8),
     }
 }
 
-export function getScaleLabel(rawScore: number, scaleConfig: ExamScaleConfig): 'SATISFACTORIO' | 'PROCESO' | 'INICIO' | 'PREV. INICIO' {
-    if (rawScore < scaleConfig.prevInicioMax) {
-        return 'PREV. INICIO'
-    }
-
+export function getScaleLabel(rawScore: number, scaleConfig: ExamScaleConfig): 'LOGRADO' | 'PROCESO' | 'INICIO' {
     if (rawScore < scaleConfig.inicioMax) {
         return 'INICIO'
     }
@@ -71,5 +66,5 @@ export function getScaleLabel(rawScore: number, scaleConfig: ExamScaleConfig): '
         return 'PROCESO'
     }
 
-    return 'SATISFACTORIO'
+    return 'LOGRADO'
 }

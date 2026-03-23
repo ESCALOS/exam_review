@@ -51,7 +51,6 @@ export interface Exam {
 }
 
 export interface ExamScaleConfig {
-    prevInicioMax: number
     inicioMax: number
     procesoMax: number
 }

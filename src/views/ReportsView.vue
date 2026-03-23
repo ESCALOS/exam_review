@@ -69,12 +69,7 @@ const scaleDistributionData = computed(() => {
   }
 
   const scaleConfig = exam.scaleConfig ?? getDefaultScaleConfig(maxExamScore.value)
-  const counts = {
-    'PREV. INICIO': 0,
-    'INICIO': 0,
-    'PROCESO': 0,
-    'SATISFACTORIO': 0,
-  }
+  const counts = { 'INICIO': 0, 'PROCESO': 0, 'LOGRADO': 0 }
 
   for (const result of examResults.value) {
     const scale = getScaleLabel(result.rawScore, scaleConfig)
@@ -82,11 +77,11 @@ const scaleDistributionData = computed(() => {
   }
 
   return {
-    labels: ['PREV. INICIO', 'INICIO', 'PROCESO', 'SATISFACTORIO'],
+    labels: ['INICIO', 'PROCESO', 'LOGRADO'],
     datasets: [
       {
-        data: [counts['PREV. INICIO'], counts['INICIO'], counts['PROCESO'], counts['SATISFACTORIO']],
-        backgroundColor: ['#d73027', '#fc8d59', '#fee08b', '#1a9850'],
+        data: [counts['INICIO'], counts['PROCESO'], counts['LOGRADO']],
+        backgroundColor: ['#b42318', '#d97706', '#1a9850'],
       },
     ],
   }
