@@ -9,6 +9,8 @@ const store = useAppStore()
 const selectedExamId = ref('')
 const currentIndex = ref(0)
 const currentQuestionIndex = ref(0)
+const studentSearch = ref('')
+const isStudentSearchOpen = ref(false)
 const answers = reactive<Record<string, StudentAnswer>>({})
 const savedMessage = ref('')
 const multipleChoiceOptions = ['A', 'B', 'C', 'D', 'E'] as const
@@ -35,6 +37,21 @@ const classroomStudents = computed(() => {
 })
 
 const currentStudent = computed(() => classroomStudents.value[currentIndex.value])
+const normalizedStudentSearch = computed(() => studentSearch.value.trim().toLocaleLowerCase())
+const filteredStudents = computed(() => {
+  const query = normalizedStudentSearch.value
+
+  if (!query) {
+    return []
+  }
+
+  return classroomStudents.value
+    .map((item, index) => ({
+      index,
+      student: item.student,
+    }))
+    .filter((item) => item.student.fullName.toLocaleLowerCase().includes(query))
+})
 const currentQuestion = computed(() => {
   const exam = selectedExam.value
 
@@ -126,6 +143,8 @@ const questionOverview = computed(() => {
 watch(
   [selectedExamId, currentIndex],
   () => {
+    studentSearch.value = ''
+    isStudentSearchOpen.value = false
     currentQuestionIndex.value = 0
     loadCurrentStudentAnswers()
   },
@@ -358,6 +377,22 @@ function nextStudent(): void {
     currentIndex.value += 1
   }
 }
+
+function openStudentSearch(): void {
+  isStudentSearchOpen.value = true
+}
+
+function closeStudentSearch(): void {
+  window.setTimeout(() => {
+    isStudentSearchOpen.value = false
+  }, 120)
+}
+
+function selectStudent(index: number): void {
+  currentIndex.value = index
+  studentSearch.value = ''
+  isStudentSearchOpen.value = false
+}
 </script>
 
 <template>
@@ -382,6 +417,37 @@ function nextStudent(): void {
 
     <article v-if="selectedExam && currentStudent" class="card grading-layout">
       <div>
+        <div class="student-search-block">
+          <label>
+            Buscar alumno
+            <input
+              v-model="studentSearch"
+              type="search"
+              placeholder="Escribe el nombre del alumno"
+              @focus="openStudentSearch"
+              @blur="closeStudentSearch"
+            />
+          </label>
+
+          <div v-if="isStudentSearchOpen && normalizedStudentSearch" class="student-search-results">
+            <button
+              v-for="item in filteredStudents"
+              :key="item.student.id"
+              type="button"
+              class="student-search-item"
+              :class="{ active: item.index === currentIndex }"
+              @mousedown.prevent="selectStudent(item.index)"
+            >
+              <span>{{ item.student.fullName }}</span>
+              <small>#{{ item.index + 1 }}</small>
+            </button>
+
+            <p v-if="!filteredStudents.length" class="muted student-search-empty">
+              No hay coincidencias para este examen.
+            </p>
+          </div>
+        </div>
+
         <header class="row-between">
           <h3>
             {{ currentStudent.student.fullName }}
