@@ -381,7 +381,7 @@ button.danger {
   height: auto;
 }
 
-.actions > button {
+.actions>button {
   flex: 0 0 auto;
 }
 
@@ -468,6 +468,49 @@ button.danger {
   color: var(--accent);
 }
 
+.question-card {
+  display: grid;
+  gap: 10px;
+}
+
+.question-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.question-overview-btn {
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--ink);
+  min-height: 54px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  font-weight: 700;
+}
+
+.question-overview-btn strong {
+  font-size: 0.95rem;
+}
+
+.question-overview-btn.marked {
+  border-color: var(--brand);
+  background: #ecfeff;
+}
+
+.question-overview-btn.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -512,12 +555,13 @@ button.danger {
   flex-wrap: wrap;
 }
 
-.toolbar-flex > label {
+.toolbar-flex>label {
   min-width: 280px;
   flex: 1 1 320px;
 }
 
 @media (max-width: 900px) {
+
   .stats-grid,
   .grid-form,
   .classroom-grid,
@@ -531,12 +575,16 @@ button.danger {
     flex-direction: column;
   }
 
-  .toolbar-flex > label {
+  .toolbar-flex>label {
     min-width: 0;
     flex: 1 1 100%;
   }
 
   .students-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .question-overview-grid {
     grid-template-columns: 1fr;
   }
 

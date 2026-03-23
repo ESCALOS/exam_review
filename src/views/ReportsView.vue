@@ -12,7 +12,7 @@ import {
 } from 'chart.js'
 import { Bar, Pie } from 'vue-chartjs'
 import { useAppStore } from '../stores/app'
-import { getExamMaxRawScore, getPassFail } from '../utils/grading'
+import { getDefaultScaleConfig, getExamMaxRawScore, getScaleLabel } from '../utils/grading'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Title, Tooltip, Legend)
 
@@ -59,16 +59,34 @@ const distributionData = computed(() => {
   }
 })
 
-const passFailData = computed(() => {
-  const approved = examResults.value.filter((item) => getPassFail(item.rawScore, item.maxRawScore) === 'Aprobado').length
-  const failed = examResults.value.length - approved
+const scaleDistributionData = computed(() => {
+  const exam = selectedExam.value
+  if (!exam) {
+    return {
+      labels: [],
+      datasets: [{ data: [], backgroundColor: [] }],
+    }
+  }
+
+  const scaleConfig = exam.scaleConfig ?? getDefaultScaleConfig(maxExamScore.value)
+  const counts = {
+    'PREV. INICIO': 0,
+    'INICIO': 0,
+    'PROCESO': 0,
+    'SATISFACTORIO': 0,
+  }
+
+  for (const result of examResults.value) {
+    const scale = getScaleLabel(result.rawScore, scaleConfig)
+    counts[scale] += 1
+  }
 
   return {
-    labels: ['Aprobados', 'Desaprobados'],
+    labels: ['PREV. INICIO', 'INICIO', 'PROCESO', 'SATISFACTORIO'],
     datasets: [
       {
-        data: [approved, failed],
-        backgroundColor: ['#1a9850', '#d73027'],
+        data: [counts['PREV. INICIO'], counts['INICIO'], counts['PROCESO'], counts['SATISFACTORIO']],
+        backgroundColor: ['#d73027', '#fc8d59', '#fee08b', '#1a9850'],
       },
     ],
   }
@@ -156,7 +174,6 @@ const questionPerformanceData = computed(() => {
       <article class="card report-summary">
         <p><strong>Puntaje máximo:</strong> {{ maxExamScore }}</p>
         <p><strong>Promedio:</strong> {{ averageScore }}</p>
-        <p><strong>Regla de aprobación:</strong> 55% del puntaje total</p>
       </article>
 
       <article class="card">
@@ -167,9 +184,9 @@ const questionPerformanceData = computed(() => {
       </article>
 
       <article class="card">
-        <h3>Aprobados vs desaprobados</h3>
+        <h3>Distribución por escalas</h3>
         <div class="chart-box">
-          <Pie :data="passFailData" :options="{ responsive: true, maintainAspectRatio: false }" />
+          <Pie :data="scaleDistributionData" :options="{ responsive: true, maintainAspectRatio: false }" />
         </div>
       </article>
 
